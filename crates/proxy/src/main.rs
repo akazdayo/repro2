@@ -1,3 +1,6 @@
+mod templates;
+
+use anyhow::Result;
 use axum::{
     Router,
     extract::Path,
@@ -5,17 +8,34 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
+use templates::{compression::Compression, narinfo::NarInfo, narinfo::NarInfoPath};
 
 #[tokio::main]
 async fn main() {
     let app = Router::new()
         .route("/nix-cache-info", get(nix_cache_info))
-        .route("/{hash}.narinfo", get(narinfo))
+        .route("/{narinfo_path}", get(narinfo))
         .route("/nar/{id}", get(nar));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
 
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn narinfo(Path(narinfo_path): Path<NarInfoPath>) -> Result<NarInfo, StatusCode> {
+    // TODO: ちゃんとキャッシュを検索するようにする
+    if narinfo_path.hash() != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    Ok(NarInfo {
+        store_path: "/nix/store/...".into(),
+        url: "nar/foo.nar".into(),
+        compression: Compression::None,
+        nar_hash: "sha256:...".into(),
+        nar_size: 1234,
+        references: vec![],
+    })
 }
 
 async fn nix_cache_info() -> &'static str {
@@ -24,31 +44,6 @@ StoreDir: /nix/store
 WantMassQuery: 0
 Priority: 30
 "
-}
-
-async fn narinfo(Path(hash): Path<String>) -> Response {
-    // 仮: このhashだけcache hitにする
-    if hash != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-
-    let body = format!(
-        "\
-StorePath: /nix/store/{hash}-hello
-URL: nar/{hash}.nar
-Compression: none
-NarHash: sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-NarSize: 1234
-References:
-"
-    );
-
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/x-nix-narinfo")],
-        body,
-    )
-        .into_response()
 }
 
 async fn nar(Path(id): Path<String>) -> Response {
