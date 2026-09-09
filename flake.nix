@@ -29,7 +29,13 @@
           mkShell {
             buildInputs = [
               rust-bin.stable.latest.default
+              openssl
+              pkg-config
             ];
+            shellHook = ''
+              export PATH="$HOME/.cargo/bin:$PATH"
+              export DATABASE_URL="sqlite://db.sqlite?mode=rwc"
+            '';
           };
       }
     );

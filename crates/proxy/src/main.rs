@@ -1,3 +1,4 @@
+mod db;
 mod templates;
 
 use anyhow::Result;
@@ -8,6 +9,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
+use db::connection;
 use templates::{compression::Compression, narinfo::NarInfo, narinfo::NarInfoPath};
 
 #[tokio::main]
@@ -16,8 +18,9 @@ async fn main() {
         .route("/nix-cache-info", get(nix_cache_info))
         .route("/{narinfo_path}", get(narinfo))
         .route("/nar/{id}", get(nar));
-
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+
+    let conn = connection::connect().await.unwrap();
 
     axum::serve(listener, app).await.unwrap();
 }
