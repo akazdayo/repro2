@@ -13,7 +13,7 @@ use axum::{
 use db::connection;
 use reqwest::Client;
 use sea_orm::DatabaseConnection;
-use templates::{compression::Compression, narinfo::NarInfo, narinfo::NarInfoPath};
+use templates::narinfo::{NarInfoPath, NarInfoResponse};
 
 #[derive(Clone)]
 struct AppState {
@@ -41,20 +41,13 @@ async fn main() {
 async fn narinfo(
     State(state): State<AppState>,
     Path(narinfo_path): Path<NarInfoPath>,
-) -> Result<NarInfo, StatusCode> {
+) -> Result<NarInfoResponse, StatusCode> {
     println!("narinfo request: {}", narinfo_path.hash());
     let Some(model) = db::narinfo::find(&state.db, narinfo_path.hash()).await? else {
         return Err(StatusCode::NOT_FOUND);
     };
 
-    Ok(NarInfo {
-        store_path: model.store_path,
-        url: "".to_string(), // TODO: 環境変数とかから動的に取得するようにしたい。
-        compression: Compression::None,
-        nar_hash: model.nar_hash,
-        nar_size: model.nar_size as u64,
-        references: vec![],
-    })
+    NarInfoResponse::try_from(model).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn nix_cache_info() -> &'static str {

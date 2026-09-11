@@ -1,5 +1,5 @@
-use crate::templates::narinfo;
 use anyhow::Result;
+use nix_narinfo::NarInfo;
 
 // url::UrlのWrapper
 // それぞれの用途に対して型を変化させるための中間型として使うことを想定
@@ -37,11 +37,13 @@ impl NarInfoUrl {
 }
 
 // TODO: DBに保存されているメタデータを元に実データを該当するサーバーに問い合わせる。
-async fn get_narinfo(http: &reqwest::Client, url: NarInfoUrl) -> Result<narinfo::NarInfo> {
+async fn get_narinfo(http: &reqwest::Client, url: NarInfoUrl) -> Result<NarInfo> {
     let response = http
         .get(url.as_url().clone())
         .send()
         .await?
         .error_for_status()?;
-    todo!()
+    let body = response.bytes().await?;
+
+    Ok(NarInfo::parse_in(&Default::default(), &body)?)
 }

@@ -1,4 +1,3 @@
-pub mod compression;
 pub mod narinfo;
 
 async fn nix_cache_info() -> &'static str {

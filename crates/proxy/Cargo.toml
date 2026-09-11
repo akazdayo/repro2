@@ -12,3 +12,5 @@ sea-orm = { version = "2.0.2", features = [ "sqlx-sqlite", "runtime-tokio", "mac
 log = "0.4.34"
 reqwest = { version = "0.13.5", features = ["rustls", "http2", "stream"] }
 url = "2.5.8"
+nix-narinfo = "0.4.0"
+nix-derivation = "0.6.1"

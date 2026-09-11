@@ -1,42 +1,41 @@
-use super::compression::Compression;
 use axum::{
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
+use nix_derivation::{NixHash, StorePath};
+use nix_narinfo::{Compression, NarInfo};
 use serde::Deserialize;
 
-pub struct NarInfo {
-    pub store_path: String,
-    pub url: String,
-    pub compression: Compression,
-    pub nar_hash: String,
-    pub nar_size: u64,
-    pub references: Vec<String>,
+use crate::db::narinfo::Model;
+
+pub struct NarInfoResponse(pub NarInfo);
+
+impl TryFrom<Model> for NarInfoResponse {
+    type Error = anyhow::Error;
+
+    fn try_from(model: Model) -> Result<Self, Self::Error> {
+        let store_path = model.store_path.parse::<StorePath>()?;
+        let nar_hash = model.nar_hash.parse::<NixHash>()?;
+        let nar_size = model.nar_size.try_into()?;
+        let info = NarInfo::builder(
+            store_path,
+            format!("nar/{}.nar", model.store_path_hash),
+            nar_hash,
+            nar_size,
+        )
+        .compression(Compression::None)
+        .build()?;
+
+        Ok(Self(info))
+    }
 }
 
-impl IntoResponse for NarInfo {
+impl IntoResponse for NarInfoResponse {
     fn into_response(self) -> Response {
-        let body = format!(
-            "\
-StorePath: {}
-URL: {}
-Compression: {}
-NarHash: {}
-NarSize: {}
-References: {}
-",
-            self.store_path,
-            self.url,
-            self.compression,
-            self.nar_hash,
-            self.nar_size,
-            self.references.join(" "),
-        );
-
         (
             StatusCode::OK,
             [(header::CONTENT_TYPE, "text/x-nix-narinfo")],
-            body,
+            self.0.to_canonical_bytes(),
         )
             .into_response()
     }
@@ -65,5 +64,25 @@ impl TryFrom<String> for NarInfoPath {
 impl NarInfoPath {
     pub fn hash(&self) -> &str {
         &self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NarInfoPath;
+
+    #[test]
+    fn accepts_a_nix_store_hash_path() {
+        let path =
+            NarInfoPath::try_from("0123456789abcdfghijklmnpqrsvwxyz.narinfo".to_owned()).unwrap();
+
+        assert_eq!(path.hash(), "0123456789abcdfghijklmnpqrsvwxyz");
+    }
+
+    #[test]
+    fn rejects_an_invalid_nix_store_hash_path() {
+        assert!(
+            NarInfoPath::try_from("0123456789abcdefghijklmnopqrstuv.narinfo".to_owned()).is_err()
+        );
     }
 }
