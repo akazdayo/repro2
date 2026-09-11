@@ -7,6 +7,7 @@ use nix_narinfo::{Compression, NarInfo};
 use serde::Deserialize;
 
 use crate::db::narinfo::Model;
+use crate::store_path_hash::StorePathHash;
 
 pub struct NarInfoResponse(pub NarInfo);
 
@@ -43,7 +44,7 @@ impl IntoResponse for NarInfoResponse {
 
 #[derive(Debug, Deserialize)]
 #[serde(try_from = "String")]
-pub struct NarInfoPath(String);
+pub struct NarInfoPath(StorePathHash);
 
 impl TryFrom<String> for NarInfoPath {
     type Error = &'static str;
@@ -51,18 +52,14 @@ impl TryFrom<String> for NarInfoPath {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let hash = value.strip_suffix(".narinfo").ok_or("not a narinfo path")?;
 
-        const NIX32: &str = "0123456789abcdfghijklmnpqrsvwxyz";
-
-        if hash.len() != 32 || !hash.chars().all(|c| NIX32.contains(c)) {
-            return Err("invalid store hash");
-        }
-
-        Ok(Self(hash.to_owned()))
+        StorePathHash::try_from(hash.to_owned())
+            .map(Self)
+            .map_err(|_| "invalid store hash")
     }
 }
 
 impl NarInfoPath {
-    pub fn hash(&self) -> &str {
+    pub fn hash(&self) -> &StorePathHash {
         &self.0
     }
 }
@@ -76,7 +73,7 @@ mod tests {
         let path =
             NarInfoPath::try_from("0123456789abcdfghijklmnpqrsvwxyz.narinfo".to_owned()).unwrap();
 
-        assert_eq!(path.hash(), "0123456789abcdfghijklmnpqrsvwxyz");
+        assert_eq!(path.hash().as_str(), "0123456789abcdfghijklmnpqrsvwxyz");
     }
 
     #[test]

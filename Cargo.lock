@@ -2135,6 +2135,7 @@ dependencies = [
  "reqwest",
  "sea-orm",
  "serde",
+ "thiserror",
  "tokio",
  "url",
 ]

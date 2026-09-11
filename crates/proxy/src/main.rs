@@ -1,5 +1,6 @@
 mod cache;
 mod db;
+mod store_path_hash;
 mod templates;
 
 use anyhow::Result;
