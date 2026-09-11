@@ -75,4 +75,22 @@ mod tests {
             "https://cache.example.org/nix-cache/0123456789abcdfghijklmnpqrsvwxyz.narinfo"
         );
     }
+
+    #[tokio::test]
+    async fn fetch_cache() {
+        use reqwest::Client;
+
+        // curl -fsSL https://cache.nixos.org/y1a49lg2ja68djssigz14lhdxvxcwbxa.narinfo
+        let cache = CacheServerUrl::try_from("https://cache.nixos.org").unwrap();
+        let hash = StorePathHash::try_from("y1a49lg2ja68djssigz14lhdxvxcwbxa".to_owned()).unwrap();
+        let http = Client::new();
+
+        let narinfo = cache.fetch_narinfo(&http, &hash).await.unwrap();
+        println!("{}", narinfo.nar_hash().to_sri_string());
+
+        assert_eq!(
+            narinfo.nar_hash().to_sri_string(),
+            "sha256-rS0qEqEXArxnAdzxNkNv+4PaHxXcQ/JdN0Kjkuq6XSY="
+        )
+    }
 }
