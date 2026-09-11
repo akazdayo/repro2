@@ -2,17 +2,20 @@
 
 use sea_orm::entity::prelude::*;
 
-#[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "nar_info")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub hash: String,
+    pub store_path_hash: String,
     pub store_path: String,
-    pub url: String,
-    pub compression: String,
     pub nar_hash: String,
     pub nar_size: i64,
+    pub cache_url: String,
+    pub status: String,
+    pub updated_at: DateTime,
 }
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}

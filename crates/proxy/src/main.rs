@@ -1,3 +1,4 @@
+mod cache;
 mod db;
 mod templates;
 
@@ -10,18 +11,21 @@ use axum::{
     routing::get,
 };
 use db::connection;
+use reqwest::Client;
 use sea_orm::DatabaseConnection;
 use templates::{compression::Compression, narinfo::NarInfo, narinfo::NarInfoPath};
 
 #[derive(Clone)]
 struct AppState {
     db: DatabaseConnection,
+    http: Client,
 }
 
 #[tokio::main]
 async fn main() {
     let state = AppState {
         db: connection::connect().await.unwrap(),
+        http: Client::new(),
     };
 
     let app = Router::new()
@@ -38,13 +42,14 @@ async fn narinfo(
     State(state): State<AppState>,
     Path(narinfo_path): Path<NarInfoPath>,
 ) -> Result<NarInfo, StatusCode> {
+    println!("narinfo request: {}", narinfo_path.hash());
     let Some(model) = db::narinfo::find(&state.db, narinfo_path.hash()).await? else {
         return Err(StatusCode::NOT_FOUND);
     };
 
     Ok(NarInfo {
         store_path: model.store_path,
-        url: model.url,
+        url: "".to_string(), // TODO: 環境変数とかから動的に取得するようにしたい。
         compression: Compression::None,
         nar_hash: model.nar_hash,
         nar_size: model.nar_size as u64,
