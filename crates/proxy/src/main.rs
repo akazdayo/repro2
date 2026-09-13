@@ -44,11 +44,15 @@ async fn narinfo(
     Path(narinfo_path): Path<NarInfoPath>,
 ) -> Result<NarInfoResponse, StatusCode> {
     println!("narinfo request: {}", narinfo_path.hash());
-    let Some(model) = db::narinfo::find(&state.db, narinfo_path.hash()).await? else {
+    let Some(record) = db::narinfo::find(&state.db, narinfo_path.hash())
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    else {
+        // TODO: 将来的にこのあたり抽象化したい。
         return Err(StatusCode::NOT_FOUND);
     };
 
-    NarInfoResponse::try_from(model).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    NarInfoResponse::from_record(record).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn nix_cache_info() -> &'static str {

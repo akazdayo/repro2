@@ -2,27 +2,21 @@ use axum::{
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
-use nix_derivation::{NixHash, StorePath};
 use nix_narinfo::{Compression, NarInfo};
 use serde::Deserialize;
 
-use crate::db::narinfo::Model;
+use crate::db::narinfo::NarRecord;
 use crate::store_path_hash::StorePathHash;
 
 pub struct NarInfoResponse(pub NarInfo);
 
-impl TryFrom<Model> for NarInfoResponse {
-    type Error = anyhow::Error;
-
-    fn try_from(model: Model) -> Result<Self, Self::Error> {
-        let store_path = model.store_path.parse::<StorePath>()?;
-        let nar_hash = model.nar_hash.parse::<NixHash>()?;
-        let nar_size = model.nar_size.try_into()?;
+impl NarInfoResponse {
+    pub fn from_record(record: NarRecord) -> Result<Self, anyhow::Error> {
         let info = NarInfo::builder(
-            store_path,
-            format!("nar/{}.nar", model.store_path_hash),
-            nar_hash,
-            nar_size,
+            record.store_path,
+            format!("nar/{}.nar", record.store_path_hash),
+            record.nar_hash,
+            record.nar_size,
         )
         .compression(Compression::None)
         .build()?;
