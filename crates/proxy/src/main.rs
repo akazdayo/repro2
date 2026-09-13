@@ -55,7 +55,8 @@ async fn narinfo(
     };
 
     let cache_server = CacheServer(
-        "https://cache.nixos.org"
+        record
+            .cache_url
             .parse()
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
     );

@@ -12,6 +12,7 @@ pub struct NarRecord {
     pub store_path: StorePath,
     pub nar_hash: NixHash,
     pub nar_size: u64,
+    pub cache_url: String,
 }
 
 impl TryFrom<nar_info::Model> for NarRecord {
@@ -23,6 +24,7 @@ impl TryFrom<nar_info::Model> for NarRecord {
             store_path: model.store_path.parse()?,
             nar_hash: model.nar_hash.parse()?,
             nar_size: model.nar_size.try_into()?,
+            cache_url: model.cache_url,
         })
     }
 }
@@ -36,6 +38,7 @@ impl TryFrom<NarInfo> for NarRecord {
             store_path: value.store_path().clone(),
             nar_hash: value.nar_hash().clone(),
             nar_size: value.nar_size().clone(),
+            cache_url: value.url().to_owned(),
         })
     }
 }
