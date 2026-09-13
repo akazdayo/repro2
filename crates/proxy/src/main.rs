@@ -16,6 +16,8 @@ use reqwest::Client;
 use sea_orm::DatabaseConnection;
 use templates::narinfo::{NarInfoPath, NarInfoResponse};
 
+use crate::{cache::get::CacheServer, db::narinfo::NarRecord};
+
 #[derive(Clone)]
 struct AppState {
     db: DatabaseConnection,
@@ -32,7 +34,7 @@ async fn main() {
     let app = Router::new()
         .route("/nix-cache-info", get(nix_cache_info))
         .route("/{narinfo_path}", get(narinfo))
-        .route("/nar/{id}", get(nar))
+        // /narは上流キャッシュサーバーに任せることにした
         .with_state(state);
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
 
@@ -52,6 +54,23 @@ async fn narinfo(
         return Err(StatusCode::NOT_FOUND);
     };
 
+    let cache_server = CacheServer(
+        "https://cache.nixos.org"
+            .parse()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+    );
+    let server_record = NarRecord::try_from(
+        cache_server
+            .fetch_narinfo(&state.http, &record.store_path_hash)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+    )
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if record != server_record {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
     NarInfoResponse::from_record(record).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
@@ -61,22 +80,4 @@ StoreDir: /nix/store
 WantMassQuery: 0
 Priority: 30
 "
-}
-
-async fn nar(Path(id): Path<String>) -> Response {
-    let expected = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.nar";
-
-    if id != expected {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-
-    // 本来ここは実際のNARデータ
-    let nar: Vec<u8> = vec![];
-
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "application/x-nix-nar")],
-        nar,
-    )
-        .into_response()
 }

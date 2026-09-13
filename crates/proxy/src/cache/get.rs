@@ -4,7 +4,7 @@ use url::Url;
 
 use crate::store_path_hash::StorePathHash;
 
-pub struct CacheServerUrl(Url);
+pub struct CacheServer(pub Url);
 
 #[derive(Debug, Error)]
 pub enum FetchNarInfoError {
@@ -16,7 +16,7 @@ pub enum FetchNarInfoError {
     Parse(#[from] nix_narinfo::ParseError),
 }
 
-impl TryFrom<String> for CacheServerUrl {
+impl TryFrom<String> for CacheServer {
     type Error = url::ParseError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
@@ -24,7 +24,7 @@ impl TryFrom<String> for CacheServerUrl {
     }
 }
 
-impl TryFrom<&str> for CacheServerUrl {
+impl TryFrom<&str> for CacheServer {
     type Error = url::ParseError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -38,7 +38,7 @@ impl TryFrom<&str> for CacheServerUrl {
     }
 }
 
-impl CacheServerUrl {
+impl CacheServer {
     fn narinfo_url(&self, hash: &StorePathHash) -> Result<Url, url::ParseError> {
         self.0.join(&format!("{hash}.narinfo"))
     }
@@ -61,12 +61,12 @@ impl CacheServerUrl {
 
 #[cfg(test)]
 mod tests {
-    use super::CacheServerUrl;
+    use super::CacheServer;
     use crate::store_path_hash::StorePathHash;
 
     #[test]
     fn builds_a_narinfo_url_below_the_cache_base_path() {
-        let cache = CacheServerUrl::try_from("https://cache.example.org/nix-cache").unwrap();
+        let cache = CacheServer::try_from("https://cache.example.org/nix-cache").unwrap();
         let hash = StorePathHash::try_from("0123456789abcdfghijklmnpqrsvwxyz".to_owned()).unwrap();
         let url = cache.narinfo_url(&hash).unwrap();
 
@@ -81,7 +81,7 @@ mod tests {
         use reqwest::Client;
 
         // curl -fsSL https://cache.nixos.org/y1a49lg2ja68djssigz14lhdxvxcwbxa.narinfo
-        let cache = CacheServerUrl::try_from("https://cache.nixos.org").unwrap();
+        let cache = CacheServer::try_from("https://cache.nixos.org").unwrap();
         let hash = StorePathHash::try_from("y1a49lg2ja68djssigz14lhdxvxcwbxa".to_owned()).unwrap();
         let http = Client::new();
 
