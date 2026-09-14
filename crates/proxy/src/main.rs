@@ -43,6 +43,11 @@ impl IntoResponse for NarInfoError {
     fn into_response(self) -> Response {
         let status = match &self {
             Self::NotFound => StatusCode::NOT_FOUND,
+            Self::Upstream(FetchNarInfoError::Request(error))
+                if error.status() == Some(StatusCode::NOT_FOUND) =>
+            {
+                StatusCode::NOT_FOUND
+            }
             Self::Upstream(_) => StatusCode::BAD_GATEWAY,
             Self::Url(_) | Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -139,6 +144,17 @@ mod tests {
         cache_url
     }
 
+    async fn mock_missing_cache() -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let cache_url = format!("http://{}/", listener.local_addr().unwrap());
+        let app = Router::new().fallback(|| async { StatusCode::NOT_FOUND });
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        cache_url
+    }
+
     fn mock_db(cache_url: String) -> DatabaseConnection {
         MockDatabase::new(DatabaseBackend::Sqlite)
             .append_query_results([[BTreeMap::<&str, Value>::from([
@@ -177,5 +193,21 @@ mod tests {
         let body = String::from_utf8(body.to_vec()).unwrap();
 
         assert!(body.contains(&format!("URL: {cache_url}nar/archive.nar")));
+    }
+
+    #[tokio::test]
+    async fn returns_not_found_when_upstream_narinfo_is_missing() {
+        let state = AppState {
+            db: mock_db(mock_missing_cache().await),
+            http: Client::new(),
+        };
+        let path = NarInfoPath::try_from(format!("{STORE_PATH_HASH}.narinfo")).unwrap();
+
+        let result = narinfo(State(state), Path(path)).await;
+
+        match result {
+            Err(error) => assert_eq!(error.into_response().status(), StatusCode::NOT_FOUND),
+            Ok(_) => panic!("expected the missing upstream narinfo to return an error"),
+        }
     }
 }
