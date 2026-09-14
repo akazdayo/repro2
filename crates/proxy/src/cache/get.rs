@@ -81,16 +81,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fetch_cache() {
+    async fn fetches_narinfo_from_cache() {
+        use axum::{Router, routing::get};
         use reqwest::Client;
 
-        // curl -fsSL https://cache.nixos.org/y1a49lg2ja68djssigz14lhdxvxcwbxa.narinfo
-        let cache = CacheServer::try_from("https://cache.nixos.org").unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let cache_url = format!("http://{}/", listener.local_addr().unwrap());
+        let app = Router::new().route(
+            "/y1a49lg2ja68djssigz14lhdxvxcwbxa.narinfo",
+            get(|| async {
+                "StorePath: /nix/store/y1a49lg2ja68djssigz14lhdxvxcwbxa-hello-2.12.3\n\
+                 URL: nar/archive.nar\n\
+                 Compression: none\n\
+                 NarHash: sha256-rS0qEqEXArxnAdzxNkNv+4PaHxXcQ/JdN0Kjkuq6XSY=\n\
+                 NarSize: 226640\n"
+            }),
+        );
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let cache = CacheServer::try_from(cache_url).unwrap();
         let hash = StorePathHash::try_from("y1a49lg2ja68djssigz14lhdxvxcwbxa".to_owned()).unwrap();
         let http = Client::new();
 
         let narinfo = cache.fetch_narinfo(&http, &hash).await.unwrap();
-        println!("{}", narinfo.nar_hash().to_sri_string());
 
         assert_eq!(
             narinfo.nar_hash().to_sri_string(),
