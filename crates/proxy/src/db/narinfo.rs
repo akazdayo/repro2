@@ -15,6 +15,15 @@ pub struct NarRecord {
     pub cache_url: String,
 }
 
+impl NarRecord {
+    pub fn matches_nar(&self, other: &Self) -> bool {
+        self.store_path_hash == other.store_path_hash
+            && self.store_path == other.store_path
+            && self.nar_hash == other.nar_hash
+            && self.nar_size == other.nar_size
+    }
+}
+
 impl TryFrom<nar_info::Model> for NarRecord {
     type Error = anyhow::Error;
 

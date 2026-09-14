@@ -2,23 +2,30 @@ use axum::{
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
-use nix_narinfo::{Compression, NarInfo};
+use nix_narinfo::NarInfo;
 use serde::Deserialize;
 
-use crate::db::narinfo::NarRecord;
 use crate::store_path_hash::StorePathHash;
 
 pub struct NarInfoResponse(pub NarInfo);
 
 impl NarInfoResponse {
-    pub fn from_record(record: NarRecord) -> Result<Self, anyhow::Error> {
-        let info = NarInfo::builder(
-            record.store_path,
-            format!("nar/{}.nar", record.store_path_hash),
-            record.nar_hash,
-            record.nar_size,
+    pub fn from_upstream(upstream: NarInfo, url: String) -> Result<Self, anyhow::Error> {
+        let info = NarInfo::builder_in(
+            upstream.store_dir().clone(),
+            upstream.store_path().clone(),
+            url,
+            upstream.nar_hash().clone(),
+            upstream.nar_size(),
         )
-        .compression(Compression::None)
+        .compression(upstream.compression().clone())
+        .references(upstream.references().iter().cloned())
+        .deriver(upstream.deriver().cloned())
+        .signatures(upstream.signatures().iter().cloned())
+        .content_address(upstream.content_address().cloned())
+        .file_hash(upstream.file_hash().cloned())
+        .file_size(upstream.file_size())
+        .extensions(upstream.extensions().iter().cloned())
         .build()?;
 
         Ok(Self(info))

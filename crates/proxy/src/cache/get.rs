@@ -39,8 +39,12 @@ impl TryFrom<&str> for CacheServer {
 }
 
 impl CacheServer {
+    pub fn url(&self) -> &Url {
+        &self.0
+    }
+
     fn narinfo_url(&self, hash: &StorePathHash) -> Result<Url, url::ParseError> {
-        self.0.join(&format!("{hash}.narinfo"))
+        self.url().join(&format!("{hash}.narinfo"))
     }
 
     pub async fn fetch_narinfo(
