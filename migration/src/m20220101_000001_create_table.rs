@@ -11,12 +11,13 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table("nar_info")
                     .if_not_exists()
-                    .col(string("hash").primary_key())
+                    .col(string("store_path_hash").primary_key())
                     .col(string("store_path"))
-                    .col(string("url"))
-                    .col(string("compression"))
                     .col(string("nar_hash"))
                     .col(big_integer("nar_size"))
+                    .col(string("cache_url"))
+                    .col(string("status").default("pending"))
+                    .col(date_time_default_now("updated_at"))
                     .to_owned(),
             )
             .await

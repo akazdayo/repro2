@@ -1,42 +1,43 @@
-use super::compression::Compression;
 use axum::{
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
+use nix_narinfo::NarInfo;
 use serde::Deserialize;
 
-pub struct NarInfo {
-    pub store_path: String,
-    pub url: String,
-    pub compression: Compression,
-    pub nar_hash: String,
-    pub nar_size: u64,
-    pub references: Vec<String>,
+use crate::store_path_hash::StorePathHash;
+
+pub struct NarInfoResponse(pub NarInfo);
+
+impl NarInfoResponse {
+    pub fn from_upstream(upstream: NarInfo, url: String) -> Result<Self, anyhow::Error> {
+        let info = NarInfo::builder_in(
+            upstream.store_dir().clone(),
+            upstream.store_path().clone(),
+            url,
+            upstream.nar_hash().clone(),
+            upstream.nar_size(),
+        )
+        .compression(upstream.compression().clone())
+        .references(upstream.references().iter().cloned())
+        .deriver(upstream.deriver().cloned())
+        .signatures(upstream.signatures().iter().cloned())
+        .content_address(upstream.content_address().cloned())
+        .file_hash(upstream.file_hash().cloned())
+        .file_size(upstream.file_size())
+        .extensions(upstream.extensions().iter().cloned())
+        .build()?;
+
+        Ok(Self(info))
+    }
 }
 
-impl IntoResponse for NarInfo {
+impl IntoResponse for NarInfoResponse {
     fn into_response(self) -> Response {
-        let body = format!(
-            "\
-StorePath: {}
-URL: {}
-Compression: {}
-NarHash: {}
-NarSize: {}
-References: {}
-",
-            self.store_path,
-            self.url,
-            self.compression,
-            self.nar_hash,
-            self.nar_size,
-            self.references.join(" "),
-        );
-
         (
             StatusCode::OK,
             [(header::CONTENT_TYPE, "text/x-nix-narinfo")],
-            body,
+            self.0.to_canonical_bytes(),
         )
             .into_response()
     }
@@ -44,7 +45,7 @@ References: {}
 
 #[derive(Debug, Deserialize)]
 #[serde(try_from = "String")]
-pub struct NarInfoPath(String);
+pub struct NarInfoPath(StorePathHash);
 
 impl TryFrom<String> for NarInfoPath {
     type Error = &'static str;
@@ -52,18 +53,34 @@ impl TryFrom<String> for NarInfoPath {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let hash = value.strip_suffix(".narinfo").ok_or("not a narinfo path")?;
 
-        const NIX32: &str = "0123456789abcdfghijklmnpqrsvwxyz";
-
-        if hash.len() != 32 || !hash.chars().all(|c| NIX32.contains(c)) {
-            return Err("invalid store hash");
-        }
-
-        Ok(Self(hash.to_owned()))
+        StorePathHash::try_from(hash.to_owned())
+            .map(Self)
+            .map_err(|_| "invalid store hash")
     }
 }
 
 impl NarInfoPath {
-    pub fn hash(&self) -> &str {
+    pub fn hash(&self) -> &StorePathHash {
         &self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NarInfoPath;
+
+    #[test]
+    fn accepts_a_nix_store_hash_path() {
+        let path =
+            NarInfoPath::try_from("0123456789abcdfghijklmnpqrsvwxyz.narinfo".to_owned()).unwrap();
+
+        assert_eq!(path.hash().as_str(), "0123456789abcdfghijklmnpqrsvwxyz");
+    }
+
+    #[test]
+    fn rejects_an_invalid_nix_store_hash_path() {
+        assert!(
+            NarInfoPath::try_from("0123456789abcdefghijklmnopqrstuv.narinfo".to_owned()).is_err()
+        );
     }
 }
