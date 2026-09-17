@@ -11,3 +11,5 @@
 9/14: 上流のReferencesを返すようにするー
 
 - NarRecordをやめて、NarInfoに統合する
+  - それはなんか微妙らしい。
+  - どちらにせよ、NarRecord, NarInfoあたりの差異によって型が微妙になってるので直す
