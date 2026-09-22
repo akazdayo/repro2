@@ -1,22 +1,23 @@
 use std::{collections::BTreeMap, path::PathBuf, process::Command};
 
+use super::installable::Installable;
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildOptions {
-    pub installable: String, // like a build target
+    pub installable: Installable, // like a build target
     pub rebuild: bool,
     pub substitute: bool,
     pub store: Option<PathBuf>,
 }
 
 impl BuildOptions {
-    pub fn new(installable: impl Into<String>) -> Self {
+    pub fn new(installable: Installable) -> Self {
         let path = PathBuf::from("/tmp/repro2-build-store/");
 
         Self {
-            installable: installable.into(),
+            installable: installable,
             rebuild: false,
             substitute: true,
             store: Some(path),
@@ -40,7 +41,7 @@ impl BuildOptions {
             String::from(if self.substitute { "true" } else { "false" }),
             String::from("--no-link"),
             String::from("--json"),
-            self.installable.clone(),
+            self.installable.as_str().to_owned(),
         ]);
         args
     }
@@ -81,7 +82,7 @@ mod tests {
 
     #[test]
     fn creates_a_normal_build_command_by_default() {
-        let options = BuildOptions::new("nixpkgs#hello");
+        let options = BuildOptions::new(Installable::try_from("nixpkgs#hello".to_owned()).unwrap());
 
         assert_eq!(
             options.args(),
@@ -105,7 +106,9 @@ mod tests {
             rebuild: true,
             substitute: false,
             store: Some(PathBuf::from("/tmp/builder-store")),
-            ..BuildOptions::new("github:example/project#package")
+            ..BuildOptions::new(
+                Installable::try_from("github:example/project#package".to_owned()).unwrap(),
+            )
         };
 
         assert_eq!(

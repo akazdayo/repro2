@@ -13,3 +13,8 @@
 - NarRecordをやめて、NarInfoに統合する
   - それはなんか微妙らしい。
   - どちらにせよ、NarRecord, NarInfoあたりの差異によって型が微妙になってるので直す
+
+# memo
+
+- https://github.com/NixOS/nix/pull/15914 で言及されているような、依存したreferencesの内、一部だけセルフビルドするような実装ができない。
+- 依存したパッケージも一緒に承認対象へ含める方式にすることにした。
