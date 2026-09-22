@@ -5,23 +5,59 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BuildOptions {
-    pub installable: Installable, // like a build target
-    pub rebuild: bool,
-    pub substitute: bool,
-    pub store: Option<PathBuf>,
+pub struct Build {
+    installable: Installable, // like a build target
+    rebuild: bool,
+    substitute: bool,
+    store: Option<PathBuf>,
 }
 
-impl BuildOptions {
+impl Build {
     pub fn new(installable: Installable) -> Self {
         let path = PathBuf::from("/tmp/repro2-build-store/");
 
         Self {
-            installable: installable,
+            installable,
             rebuild: false,
             substitute: true,
             store: Some(path),
         }
+    }
+
+    pub fn rebuild(mut self, rebuild: bool) -> Self {
+        self.rebuild = rebuild;
+        self
+    }
+
+    pub fn substitute(mut self, substitute: bool) -> Self {
+        self.substitute = substitute;
+        self
+    }
+
+    pub fn store(mut self, store: Option<PathBuf>) -> Self {
+        self.store = store;
+        self
+    }
+
+    /// Runs `nix build` without creating a result symlink and returns its JSON result.
+    ///
+    /// Unless `self.store` is set, Nix inherits the caller's store and daemon settings.
+    pub fn run(&self) -> Result<Vec<BuildOutput>> {
+        let output = Command::new("nix")
+            .args(self.args())
+            .output()
+            .context("failed to start nix build")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!(
+                "nix build failed with exit status {}: {}",
+                output.status,
+                stderr.trim()
+            );
+        }
+
+        serde_json::from_slice(&output.stdout).context("failed to parse JSON from nix build")
     }
 
     fn args(&self) -> Vec<String> {
@@ -54,38 +90,16 @@ pub struct BuildOutput {
     pub outputs: BTreeMap<String, String>,
 }
 
-/// Runs `nix build` without creating a result symlink and returns its JSON result.
-///
-/// Unless `options.store` is set, Nix inherits the caller's store and daemon settings.
-pub fn build(options: &BuildOptions) -> Result<Vec<BuildOutput>> {
-    let args = options.args();
-    let output = Command::new("nix")
-        .args(&args)
-        .output()
-        .context("failed to start nix build")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!(
-            "nix build failed with exit status {}: {}",
-            output.status,
-            stderr.trim()
-        );
-    }
-
-    serde_json::from_slice(&output.stdout).context("failed to parse JSON from nix build")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn creates_a_normal_build_command_by_default() {
-        let options = BuildOptions::new(Installable::try_from("nixpkgs#hello".to_owned()).unwrap());
+        let build = Build::new(Installable::try_from("nixpkgs#hello".to_owned()).unwrap());
 
         assert_eq!(
-            options.args(),
+            build.args(),
             [
                 "build",
                 "--store",
@@ -102,17 +116,15 @@ mod tests {
 
     #[test]
     fn creates_a_local_rebuild_command_when_requested() {
-        let options = BuildOptions {
-            rebuild: true,
-            substitute: false,
-            store: Some(PathBuf::from("/tmp/builder-store")),
-            ..BuildOptions::new(
-                Installable::try_from("github:example/project#package".to_owned()).unwrap(),
-            )
-        };
+        let build = Build::new(
+            Installable::try_from("github:example/project#package".to_owned()).unwrap(),
+        )
+        .rebuild(true)
+        .substitute(false)
+        .store(Some(PathBuf::from("/tmp/builder-store")));
 
         assert_eq!(
-            options.args(),
+            build.args(),
             [
                 "build",
                 "--store",
