@@ -2,4 +2,4 @@
 
 pub mod prelude;
 
-pub mod nar_info;
+pub mod build_reports;

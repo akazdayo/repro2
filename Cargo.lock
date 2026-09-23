@@ -2351,6 +2351,7 @@ dependencies = [
  "anyhow",
  "axum",
  "log",
+ "migration",
  "sea-orm",
  "serde",
  "tokio",
