@@ -1,4 +1,4 @@
 [workspace]
 resolver = "3"
 
-members = ["crates/*", "migration/"]
+members = ["crates/*", "crates/registry/migration"]

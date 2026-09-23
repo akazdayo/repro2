@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.104"
+axum = "0.8.9"
+log = "0.4.34"
+sea-orm = { version = "2.0.2", features = ["sqlx-sqlite", "runtime-tokio", "macros"] }
+serde = { version = "1.0.229", features = ["derive"] }
+tokio = { version = "1.53.1", features = ["full"] }

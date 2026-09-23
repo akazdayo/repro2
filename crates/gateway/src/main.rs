@@ -1,5 +1,5 @@
 mod cache;
-mod db;
+mod nar_record;
 mod store_path_hash;
 mod templates;
 
@@ -10,20 +10,18 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use db::connection;
 use reqwest::Client;
-use sea_orm::DatabaseConnection;
 use templates::narinfo::{NarInfoPath, NarInfoResponse};
 use thiserror::Error;
 
 use crate::{
     cache::get::{CacheServer, FetchNarInfoError},
-    db::narinfo::NarRecord,
+    nar_record::{NarRecord, RegistryNarRecord},
 };
 
 #[derive(Clone)]
 struct AppState {
-    db: DatabaseConnection,
+    registry_url: String,
     http: Client,
 }
 
@@ -35,6 +33,8 @@ enum NarInfoError {
     Url(#[from] url::ParseError),
     #[error("failed to fetch upstream narinfo")]
     Upstream(#[from] FetchNarInfoError),
+    #[error("failed to fetch registry record")]
+    Registry(#[from] reqwest::Error),
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -48,7 +48,7 @@ impl IntoResponse for NarInfoError {
             {
                 StatusCode::NOT_FOUND
             }
-            Self::Upstream(_) => StatusCode::BAD_GATEWAY,
+            Self::Upstream(_) | Self::Registry(_) => StatusCode::BAD_GATEWAY,
             Self::Url(_) | Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
@@ -63,7 +63,8 @@ impl IntoResponse for NarInfoError {
 #[tokio::main]
 async fn main() {
     let state = AppState {
-        db: connection::connect().await.unwrap(),
+        registry_url: std::env::var("REGISTRY_URL")
+            .unwrap_or_else(|_| "http://127.0.0.1:3001".to_owned()),
         http: Client::new(),
     };
 
@@ -82,9 +83,24 @@ async fn narinfo(
     Path(narinfo_path): Path<NarInfoPath>,
 ) -> Result<NarInfoResponse, NarInfoError> {
     println!("narinfo request: {}", narinfo_path.hash());
-    let record = db::narinfo::find(&state.db, narinfo_path.hash())
-        .await?
-        .ok_or(NarInfoError::NotFound)?;
+    let response = state
+        .http
+        .get(format!(
+            "{}/nar-info/{}",
+            state.registry_url.trim_end_matches('/'),
+            narinfo_path.hash()
+        ))
+        .send()
+        .await?;
+    if response.status() == StatusCode::NOT_FOUND {
+        return Err(NarInfoError::NotFound);
+    }
+    let record = NarRecord::try_from(
+        response
+            .error_for_status()?
+            .json::<RegistryNarRecord>()
+            .await?,
+    )?;
 
     let cache_server = CacheServer::try_from(record.cache_url.as_str())?;
     let server_info = cache_server
@@ -115,10 +131,7 @@ Priority: 30
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
-    use axum::{Router, routing::get};
-    use sea_orm::{DatabaseBackend, DatabaseConnection, MockDatabase, Value, prelude::DateTime};
+    use axum::{Json, Router, routing::get};
 
     use super::*;
 
@@ -155,30 +168,34 @@ mod tests {
         cache_url
     }
 
-    fn mock_db(cache_url: String) -> DatabaseConnection {
-        MockDatabase::new(DatabaseBackend::Sqlite)
-            .append_query_results([[BTreeMap::<&str, Value>::from([
-                ("store_path_hash", STORE_PATH_HASH.into()),
-                ("store_path", STORE_PATH.into()),
-                ("nar_hash", NAR_HASH.into()),
-                ("nar_size", NAR_SIZE.into()),
-                ("cache_url", cache_url.into()),
-                ("status", "pending".into()),
-                (
-                    "updated_at",
-                    DateTime::parse_from_str("2026-09-14 00:00:00", "%F %T")
-                        .unwrap()
-                        .into(),
-                ),
-            ])]])
-            .into_connection()
+    async fn mock_registry(cache_url: String) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let registry_url = format!("http://{}", listener.local_addr().unwrap());
+        let record = RegistryNarRecord {
+            store_path_hash: STORE_PATH_HASH.to_owned(),
+            store_path: STORE_PATH.to_owned(),
+            nar_hash: NAR_HASH.to_owned(),
+            nar_size: NAR_SIZE,
+            cache_url,
+        };
+        let app = Router::new().route(
+            &format!("/nar-info/{STORE_PATH_HASH}"),
+            get(move || {
+                let record = record.clone();
+                async move { Json(record) }
+            }),
+        );
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        registry_url
     }
 
     #[tokio::test]
-    async fn returns_narinfo_when_db_and_upstream_records_match() {
+    async fn returns_narinfo_when_registry_and_upstream_records_match() {
         let cache_url = mock_cache().await;
         let state = AppState {
-            db: mock_db(cache_url.clone()),
+            registry_url: mock_registry(cache_url.clone()).await,
             http: Client::new(),
         };
         let path = NarInfoPath::try_from(format!("{STORE_PATH_HASH}.narinfo")).unwrap();
@@ -198,7 +215,7 @@ mod tests {
     #[tokio::test]
     async fn returns_not_found_when_upstream_narinfo_is_missing() {
         let state = AppState {
-            db: mock_db(mock_missing_cache().await),
+            registry_url: mock_registry(mock_missing_cache().await).await,
             http: Client::new(),
         };
         let path = NarInfoPath::try_from(format!("{STORE_PATH_HASH}.narinfo")).unwrap();

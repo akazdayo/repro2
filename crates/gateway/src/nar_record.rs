@@ -1,10 +1,18 @@
 use anyhow::Result;
 use nix_derivation::{NixHash, StorePath};
 use nix_narinfo::NarInfo;
-use sea_orm::{ConnectionTrait, EntityTrait};
+use serde::{Deserialize, Serialize};
 
-use crate::db::entities::nar_info;
 use crate::store_path_hash::StorePathHash;
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct RegistryNarRecord {
+    pub store_path_hash: String,
+    pub store_path: String,
+    pub nar_hash: String,
+    pub nar_size: i64,
+    pub cache_url: String,
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct NarRecord {
@@ -24,10 +32,10 @@ impl NarRecord {
     }
 }
 
-impl TryFrom<nar_info::Model> for NarRecord {
+impl TryFrom<RegistryNarRecord> for NarRecord {
     type Error = anyhow::Error;
 
-    fn try_from(model: nar_info::Model) -> Result<Self, Self::Error> {
+    fn try_from(model: RegistryNarRecord) -> Result<Self, Self::Error> {
         Ok(Self {
             store_path_hash: StorePathHash::try_from(model.store_path_hash)?,
             store_path: model.store_path.parse()?,
@@ -50,10 +58,4 @@ impl TryFrom<NarInfo> for NarRecord {
             cache_url: value.url().to_owned(),
         })
     }
-}
-
-pub async fn find(db: &impl ConnectionTrait, hash: &StorePathHash) -> Result<Option<NarRecord>> {
-    let info = nar_info::Entity::find_by_id(hash.as_str()).one(db).await?;
-
-    info.map(NarRecord::try_from).transpose()
 }

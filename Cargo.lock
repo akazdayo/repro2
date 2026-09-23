@@ -1151,11 +1151,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
- "log",
  "nix-derivation",
  "nix-narinfo",
  "reqwest",
- "sea-orm",
  "serde",
  "thiserror",
  "tokio",
@@ -2349,6 +2347,14 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 [[package]]
 name = "registry"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "log",
+ "sea-orm",
+ "serde",
+ "tokio",
+]
 
 [[package]]
 name = "reqwest"
@@ -2377,6 +2383,8 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "rustls-platform-verifier",
+ "serde",
+ "serde_json",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",
