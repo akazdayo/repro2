@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This repository is a Rust 2024 workspace. Executable crates live under `crates/`: `proxy` serves the Axum-based Nix cache gateway, while `builder` and `round` are currently minimal service entry points. Proxy code is split by responsibility in `crates/proxy/src/` (`cache/`, `db/`, and `templates/`). SeaORM migrations live in `migration/src/`; generated database entities belong in `crates/proxy/src/db/entities/`. Design notes and experiments stay in top-level Markdown files. There is no separate asset directory.
+This repository is a Rust 2024 workspace. Executable crates live under `crates/`: `gateway` serves the Axum-based Nix cache gateway, while `builder` and `registry` are currently minimal service entry points. Gateway code is split by responsibility in `crates/gateway/src/` (`cache/`, `db/`, and `templates/`). SeaORM migrations live in `migration/src/`; generated database entities belong in `crates/gateway/src/db/entities/`. Design notes and experiments stay in top-level Markdown files. There is no separate asset directory.
 
 ## Build, Test, and Development Commands
 
@@ -13,7 +13,7 @@ Enter the reproducible toolchain with `nix develop`. Run repository commands thr
 - `nix develop -c cargo fmt --all -- --check` — verify Rust formatting.
 - `nix develop -c cargo clippy --workspace --all-targets -- -D warnings` — reject lint warnings.
 - `nix develop -c cargo run -p migration -- up` — apply migrations to `DATABASE_URL` (the dev shell defaults to `sqlite://db.sqlite?mode=rwc`).
-- `nix develop -c cargo run -p proxy` — run the HTTP service on port 3000.
+- `nix develop -c cargo run -p gateway` — run the HTTP service on port 3000.
 
 Use `.` or `.#attribute` for local flakes; do not use `path:.`, which can copy ignored build outputs into the Nix store.
 
