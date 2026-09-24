@@ -13,7 +13,7 @@ pub struct Model {
     pub store_path: String,
     pub nar_hash: String,
     pub nar_size: i64,
-    pub cache_url: String,
+    pub cache_url: Option<String>,
     pub created_at: DateTime,
 }
 

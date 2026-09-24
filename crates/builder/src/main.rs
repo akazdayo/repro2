@@ -1,15 +1,31 @@
 mod nix;
 
-use std::{path::PathBuf, time::SystemTime};
+use std::{
+    path::PathBuf,
+    time::{Duration, SystemTime},
+};
 
 use anyhow::{Context, Result};
 use clap::Parser;
 use nix::{build::Build, installable::Installable};
+use serde::Serialize;
 
 #[derive(Parser)]
 struct Cli {
     /// Flake installable to build, for example nixpkgs#hello
     installable: String,
+    #[arg(long, default_value = "http://127.0.0.1:3001")]
+    registry_url: String,
+}
+
+#[derive(Serialize)]
+struct BuildReport<'a> {
+    drv_path: Option<&'a str>,
+    output_name: &'a str,
+    store_path_hash: &'a str,
+    store_path: &'a str,
+    nar_hash: &'a str,
+    nar_size: i64,
 }
 
 fn main() -> Result<()> {
@@ -27,15 +43,40 @@ fn main() -> Result<()> {
         .substitute(true)
         .store(Some(store.clone()))
         .substituters(Some("https://cache.nixos.org/".to_owned()));
+    let http = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()?;
 
     println!("Store: {}", store.display());
     for result in build.run()? {
-        for (name, path) in result.outputs {
-            let info = build.path_info(&path)?;
+        let drv_path = result.drv_path.as_ref().and_then(|path| path.to_str());
+        for (name, path) in &result.outputs {
+            let info = build.path_info(path)?;
             println!(
                 "{name}: {path}\n  NarHash: {}\n  NarSize: {}",
                 info.nar_hash, info.nar_size
             );
+            let store_path_hash = path
+                .strip_prefix("/nix/store/")
+                .and_then(|name| name.split_once('-'))
+                .map(|(hash, _)| hash)
+                .context("unexpected Nix store path")?;
+            let report = BuildReport {
+                drv_path,
+                output_name: name,
+                store_path_hash,
+                store_path: path,
+                nar_hash: &info.nar_hash,
+                nar_size: info.nar_size.try_into()?,
+            };
+            http.post(format!(
+                "{}/build-reports",
+                cli.registry_url.trim_end_matches('/')
+            ))
+            .json(&report)
+            .send()?
+            .error_for_status()?;
+            println!("Registered: {path}");
         }
     }
 
