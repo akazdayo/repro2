@@ -2,12 +2,6 @@
 pub struct Installable(String);
 
 impl Installable {
-    pub fn new(reference: &str, attribute: &str) -> Self {
-        Self {
-            0: format!("{reference}#{attribute}"),
-        }
-    }
-
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -40,7 +34,7 @@ mod tests {
     fn parses_a_flake_reference_with_an_attribute() {
         let installable = Installable::try_from("nixpkgs#hello".to_owned()).unwrap();
 
-        assert_eq!(installable, Installable::new("nixpkgs", "hello"));
+        assert_eq!(installable.as_str(), "nixpkgs#hello");
     }
 
     #[test]

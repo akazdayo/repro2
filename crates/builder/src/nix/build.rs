@@ -10,17 +10,17 @@ pub struct Build {
     rebuild: bool,
     substitute: bool,
     store: Option<PathBuf>,
+    substituters: Option<String>,
 }
 
 impl Build {
     pub fn new(installable: Installable) -> Self {
-        let path = PathBuf::from("/tmp/repro2-build-store/");
-
         Self {
             installable,
             rebuild: false,
             substitute: true,
-            store: Some(path),
+            store: Some(PathBuf::from("/tmp/repro2-build-store/")),
+            substituters: None,
         }
     }
 
@@ -39,10 +39,18 @@ impl Build {
         self
     }
 
+    pub fn substituters(mut self, substituters: Option<String>) -> Self {
+        self.substituters = substituters;
+        self
+    }
+
     /// Runs `nix build` without creating a result symlink and returns its JSON result.
-    ///
     /// Unless `self.store` is set, Nix inherits the caller's store and daemon settings.
     pub fn run(&self) -> Result<Vec<BuildOutput>> {
+        if let Some(store) = &self.store {
+            std::fs::create_dir_all(store.join("builds"))
+                .context("failed to create Nix build directory")?;
+        }
         let output = Command::new("nix")
             .args(self.args())
             .output()
@@ -60,12 +68,39 @@ impl Build {
         serde_json::from_slice(&output.stdout).context("failed to parse JSON from nix build")
     }
 
+    pub fn path_info(&self, store_path: &str) -> Result<PathInfo> {
+        let mut command = Command::new("nix");
+        command.args(["path-info", "--json", "--json-format", "1"]);
+        if let Some(store) = &self.store {
+            command.arg("--store").arg(store);
+        }
+        let output = command
+            .arg(store_path)
+            .output()
+            .context("failed to start nix path-info")?;
+        if !output.status.success() {
+            bail!(
+                "nix path-info failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+
+        let mut paths: BTreeMap<String, PathInfo> =
+            serde_json::from_slice(&output.stdout).context("failed to parse nix path-info")?;
+        paths
+            .remove(store_path)
+            .context("built store path not found in nix path-info")
+    }
+
     fn args(&self) -> Vec<String> {
         let mut args = vec![String::from("build")];
         if let Some(store) = &self.store {
             args.extend([
                 String::from("--store"),
                 store.to_string_lossy().into_owned(),
+                String::from("--option"),
+                String::from("build-dir"),
+                store.join("builds").to_string_lossy().into_owned(),
             ]);
         }
         if self.rebuild {
@@ -75,6 +110,15 @@ impl Build {
             String::from("--option"),
             String::from("substitute"),
             String::from(if self.substitute { "true" } else { "false" }),
+        ]);
+        if let Some(substituters) = &self.substituters {
+            args.extend([
+                String::from("--option"),
+                String::from("substituters"),
+                substituters.clone(),
+            ]);
+        }
+        args.extend([
             String::from("--no-link"),
             String::from("--json"),
             self.installable.as_str().to_owned(),
@@ -88,6 +132,13 @@ impl Build {
 pub struct BuildOutput {
     pub drv_path: Option<PathBuf>,
     pub outputs: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PathInfo {
+    pub nar_hash: String,
+    pub nar_size: u64,
 }
 
 #[cfg(test)]
@@ -105,6 +156,9 @@ mod tests {
                 "--store",
                 "/tmp/repro2-build-store/",
                 "--option",
+                "build-dir",
+                "/tmp/repro2-build-store/builds",
+                "--option",
                 "substitute",
                 "true",
                 "--no-link",
@@ -115,24 +169,25 @@ mod tests {
     }
 
     #[test]
-    fn creates_a_local_rebuild_command_when_requested() {
-        let build = Build::new(
-            Installable::try_from("github:example/project#package".to_owned()).unwrap(),
-        )
-        .rebuild(true)
-        .substitute(false)
-        .store(Some(PathBuf::from("/tmp/builder-store")));
+    fn accepts_independent_build_settings() {
+        let build =
+            Build::new(Installable::try_from("github:example/project#package".to_owned()).unwrap())
+                .rebuild(true)
+                .substitute(false)
+                .store(None)
+                .substituters(Some("https://cache.nixos.org/".to_owned()));
 
         assert_eq!(
             build.args(),
             [
                 "build",
-                "--store",
-                "/tmp/builder-store",
                 "--rebuild",
                 "--option",
                 "substitute",
                 "false",
+                "--option",
+                "substituters",
+                "https://cache.nixos.org/",
                 "--no-link",
                 "--json",
                 "github:example/project#package",
