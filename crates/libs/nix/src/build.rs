@@ -13,6 +13,7 @@ pub struct Build {
     substituters: Option<String>,
 }
 
+// Nixコマンドのラッパー
 impl Build {
     pub fn new(installable: Installable) -> Self {
         Self {
