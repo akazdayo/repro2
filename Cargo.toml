@@ -1,4 +1,10 @@
 [workspace]
 resolver = "3"
 
-members = ["crates/*", "crates/registry/migration"]
+members = [
+    "crates/builder",
+    "crates/gateway",
+    "crates/registry",
+    "crates/registry/migration",
+    "crates/libs/*",
+]

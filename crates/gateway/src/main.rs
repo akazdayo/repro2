@@ -29,6 +29,8 @@ struct AppState {
 enum NarInfoError {
     #[error("narinfo not found")]
     NotFound,
+    #[error("multiple build results have the same number of reports")]
+    Ambiguous,
     #[error("invalid cache URL")]
     Url(#[from] url::ParseError),
     #[error("failed to fetch upstream narinfo")]
@@ -43,6 +45,7 @@ impl IntoResponse for NarInfoError {
     fn into_response(self) -> Response {
         let status = match &self {
             Self::NotFound => StatusCode::NOT_FOUND,
+            Self::Ambiguous => StatusCode::CONFLICT,
             Self::Upstream(FetchNarInfoError::Request(error))
                 if error.status() == Some(StatusCode::NOT_FOUND) =>
             {
@@ -95,12 +98,11 @@ async fn narinfo(
     if response.status() == StatusCode::NOT_FOUND {
         return Err(NarInfoError::NotFound);
     }
-    let record = NarRecord::try_from(
-        response
-            .error_for_status()?
-            .json::<RegistryNarRecord>()
-            .await?,
-    )?;
+    let reports = response
+        .error_for_status()?
+        .json::<Vec<RegistryNarRecord>>()
+        .await?;
+    let record = select_report(reports)?;
 
     let cache_server = CacheServer::try_from(record.cache_url.as_str())?;
     let server_info = cache_server
@@ -119,6 +121,38 @@ async fn narinfo(
         server_info,
         nar_url.to_string(),
     )?)
+}
+
+// Temporary policy: count reports for each distinct build result, regardless of cache URL.
+fn select_report(reports: Vec<RegistryNarRecord>) -> Result<NarRecord, NarInfoError> {
+    let mut records = reports
+        .into_iter()
+        .map(NarRecord::try_from)
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    let mut winner = None;
+    let mut max_votes = 0;
+    let mut tied = false;
+
+    for (index, record) in records.iter().enumerate() {
+        let votes = records
+            .iter()
+            .filter(|other| record.matches_nar(other))
+            .count();
+        if votes > max_votes {
+            winner = Some(index);
+            max_votes = votes;
+            tied = false;
+        } else if votes == max_votes
+            && winner.is_some_and(|winner| !record.matches_nar(&records[winner]))
+        {
+            tied = true;
+        }
+    }
+
+    if tied {
+        return Err(NarInfoError::Ambiguous);
+    }
+    Ok(records.swap_remove(winner.ok_or(NarInfoError::NotFound)?))
 }
 
 async fn nix_cache_info() -> &'static str {
@@ -169,8 +203,6 @@ mod tests {
     }
 
     async fn mock_registry(cache_url: String) -> String {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let registry_url = format!("http://{}", listener.local_addr().unwrap());
         let record = RegistryNarRecord {
             store_path_hash: STORE_PATH_HASH.to_owned(),
             store_path: STORE_PATH.to_owned(),
@@ -178,11 +210,17 @@ mod tests {
             nar_size: NAR_SIZE,
             cache_url,
         };
+        mock_registry_reports(vec![record]).await
+    }
+
+    async fn mock_registry_reports(reports: Vec<RegistryNarRecord>) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let registry_url = format!("http://{}", listener.local_addr().unwrap());
         let app = Router::new().route(
             &format!("/nar-info/{STORE_PATH_HASH}"),
             get(move || {
-                let record = record.clone();
-                async move { Json(record) }
+                let reports = reports.clone();
+                async move { Json(reports) }
             }),
         );
         tokio::spawn(async move {
@@ -225,6 +263,91 @@ mod tests {
         match result {
             Err(error) => assert_eq!(error.into_response().status(), StatusCode::NOT_FOUND),
             Ok(_) => panic!("expected the missing upstream narinfo to return an error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn returns_narinfo_for_the_most_reported_build_result() {
+        let cache_url = mock_cache().await;
+        let record = RegistryNarRecord {
+            store_path_hash: STORE_PATH_HASH.to_owned(),
+            store_path: STORE_PATH.to_owned(),
+            nar_hash: NAR_HASH.to_owned(),
+            nar_size: NAR_SIZE,
+            cache_url: cache_url.clone(),
+        };
+        let other = RegistryNarRecord {
+            nar_size: NAR_SIZE + 1,
+            ..record.clone()
+        };
+        let registry_url = mock_registry_reports(vec![other, record.clone(), record]).await;
+
+        let state = AppState {
+            registry_url,
+            http: Client::new(),
+        };
+        let path = NarInfoPath::try_from(format!("{STORE_PATH_HASH}.narinfo")).unwrap();
+        let response = narinfo(State(state), Path(path))
+            .await
+            .unwrap()
+            .into_response();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+
+        assert!(
+            String::from_utf8(body.to_vec())
+                .unwrap()
+                .contains(&format!("URL: {cache_url}nar/archive.nar"))
+        );
+    }
+
+    #[test]
+    fn counts_matching_results_from_different_caches_together() {
+        let record = RegistryNarRecord {
+            store_path_hash: STORE_PATH_HASH.to_owned(),
+            store_path: STORE_PATH.to_owned(),
+            nar_hash: NAR_HASH.to_owned(),
+            nar_size: NAR_SIZE,
+            cache_url: "https://first.example/".to_owned(),
+        };
+        let matching = RegistryNarRecord {
+            cache_url: "https://second.example/".to_owned(),
+            ..record.clone()
+        };
+        let other = RegistryNarRecord {
+            nar_size: NAR_SIZE + 1,
+            ..record.clone()
+        };
+
+        let winner = select_report(vec![other, record, matching]).unwrap();
+
+        assert_eq!(winner.cache_url, "https://first.example/");
+    }
+
+    #[tokio::test]
+    async fn returns_conflict_when_results_have_equal_report_counts() {
+        let record = RegistryNarRecord {
+            store_path_hash: STORE_PATH_HASH.to_owned(),
+            store_path: STORE_PATH.to_owned(),
+            nar_hash: NAR_HASH.to_owned(),
+            nar_size: NAR_SIZE,
+            cache_url: "http://127.0.0.1:1/".to_owned(),
+        };
+        let other = RegistryNarRecord {
+            nar_size: NAR_SIZE + 1,
+            ..record.clone()
+        };
+        let state = AppState {
+            registry_url: mock_registry_reports(vec![record, other]).await,
+            http: Client::new(),
+        };
+        let path = NarInfoPath::try_from(format!("{STORE_PATH_HASH}.narinfo")).unwrap();
+        let result = narinfo(State(state), Path(path)).await;
+
+        match result {
+            Err(error) => assert_eq!(error.into_response().status(), StatusCode::CONFLICT),
+            Ok(_) => panic!("expected tied build results to be rejected"),
         }
     }
 }

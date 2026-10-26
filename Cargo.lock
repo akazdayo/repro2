@@ -497,6 +497,9 @@ name = "builder"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
+ "nix 0.1.0",
+ "reqwest",
  "serde",
  "serde_json",
 ]
@@ -1793,7 +1796,7 @@ version = "1.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c0aeb26bf5e836cc1c341c8106051b573f1766dfa05aa87f0b98be5e51b02303"
 dependencies = [
- "nix",
+ "nix 0.29.0",
  "serde",
  "winapi",
 ]
@@ -1871,6 +1874,17 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "nix"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "reqwest",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2351,6 +2365,7 @@ dependencies = [
  "anyhow",
  "axum",
  "log",
+ "migration",
  "sea-orm",
  "serde",
  "tokio",
@@ -2365,6 +2380,7 @@ dependencies = [
  "base64 0.23.1",
  "bytes",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "h2",
