@@ -4,7 +4,7 @@ use url::Url;
 
 use crate::store_path_hash::StorePathHash;
 
-pub struct CacheServer(pub Url);
+pub struct HttpBinaryCache(pub Url);
 
 #[derive(Debug, Error)]
 pub enum FetchNarInfoError {
@@ -16,7 +16,7 @@ pub enum FetchNarInfoError {
     Parse(#[from] nix_narinfo::ParseError),
 }
 
-impl TryFrom<String> for CacheServer {
+impl TryFrom<String> for HttpBinaryCache {
     type Error = url::ParseError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
@@ -24,7 +24,7 @@ impl TryFrom<String> for CacheServer {
     }
 }
 
-impl TryFrom<&str> for CacheServer {
+impl TryFrom<&str> for HttpBinaryCache {
     type Error = url::ParseError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -38,7 +38,7 @@ impl TryFrom<&str> for CacheServer {
     }
 }
 
-impl CacheServer {
+impl HttpBinaryCache {
     pub fn url(&self) -> &Url {
         &self.0
     }
@@ -65,12 +65,12 @@ impl CacheServer {
 
 #[cfg(test)]
 mod tests {
-    use super::CacheServer;
+    use super::HttpBinaryCache;
     use crate::store_path_hash::StorePathHash;
 
     #[test]
     fn builds_a_narinfo_url_below_the_cache_base_path() {
-        let cache = CacheServer::try_from("https://cache.example.org/nix-cache").unwrap();
+        let cache = HttpBinaryCache::try_from("https://cache.example.org/nix-cache").unwrap();
         let hash = StorePathHash::try_from("0123456789abcdfghijklmnpqrsvwxyz".to_owned()).unwrap();
         let url = cache.narinfo_url(&hash).unwrap();
 
@@ -101,7 +101,7 @@ mod tests {
             axum::serve(listener, app).await.unwrap();
         });
 
-        let cache = CacheServer::try_from(cache_url).unwrap();
+        let cache = HttpBinaryCache::try_from(cache_url).unwrap();
         let hash = StorePathHash::try_from("y1a49lg2ja68djssigz14lhdxvxcwbxa".to_owned()).unwrap();
         let http = Client::new();
 

@@ -5,6 +5,7 @@ use axum::{
 };
 use nix_narinfo::NarInfo;
 use serde::Deserialize;
+use std::fmt;
 
 // nix_narinfo::NarInfoのWrapper.
 // axum::response::Responseに合わせるため。
@@ -13,6 +14,12 @@ pub struct NarInfoResponse(pub NarInfo);
 #[derive(Debug, Deserialize)]
 #[serde(try_from = "String")]
 pub struct NarInfoPath(StorePathHash);
+
+impl fmt::Display for NarInfoPath {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}.narinfo", self.0)
+    }
+}
 
 impl NarInfoResponse {
     pub fn from_upstream(upstream: NarInfo, url: String) -> Result<Self, anyhow::Error> {
@@ -76,6 +83,7 @@ mod tests {
             NarInfoPath::try_from("0123456789abcdfghijklmnpqrsvwxyz.narinfo".to_owned()).unwrap();
 
         assert_eq!(path.hash().as_str(), "0123456789abcdfghijklmnpqrsvwxyz");
+        assert_eq!(path.to_string(), "0123456789abcdfghijklmnpqrsvwxyz.narinfo");
     }
 
     #[test]
