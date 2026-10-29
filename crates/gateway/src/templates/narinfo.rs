@@ -1,3 +1,4 @@
+use crate::store_path_hash::StorePathHash;
 use axum::{
     http::{StatusCode, header},
     response::{IntoResponse, Response},
@@ -5,9 +6,13 @@ use axum::{
 use nix_narinfo::NarInfo;
 use serde::Deserialize;
 
-use crate::store_path_hash::StorePathHash;
-
+// nix_narinfo::NarInfoのWrapper.
+// axum::response::Responseに合わせるため。
 pub struct NarInfoResponse(pub NarInfo);
+
+#[derive(Debug, Deserialize)]
+#[serde(try_from = "String")]
+pub struct NarInfoPath(StorePathHash);
 
 impl NarInfoResponse {
     pub fn from_upstream(upstream: NarInfo, url: String) -> Result<Self, anyhow::Error> {
@@ -42,10 +47,6 @@ impl IntoResponse for NarInfoResponse {
             .into_response()
     }
 }
-
-#[derive(Debug, Deserialize)]
-#[serde(try_from = "String")]
-pub struct NarInfoPath(StorePathHash);
 
 impl TryFrom<String> for NarInfoPath {
     type Error = &'static str;
