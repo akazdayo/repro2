@@ -4,15 +4,15 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0.104"
-axum = "0.8.9"
-serde = { version = "1.0.229", features = ["derive"] }
-tokio = { version = "1.53.1", features = ["net"] }
-reqwest = { version = "0.13.5", features = ["rustls", "http2", "stream", "json"] }
+anyhow.workspace = true
+axum.workspace = true
+serde.workspace = true
+tokio = { workspace = true, features = ["net"] }
+reqwest = { workspace = true, features = ["http2", "stream"] }
 thiserror = "2.0.18"
 url = "2.5.8"
 nix-narinfo = "0.4.0"
 nix-derivation = "0.6.1"
 
 [dev-dependencies]
-tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
