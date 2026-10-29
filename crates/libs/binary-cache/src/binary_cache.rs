@@ -63,6 +63,20 @@ impl HttpBinaryCache {
     }
 }
 
+impl crate::CacheSource for HttpBinaryCache {
+    async fn lookup(&self, hash: &StorePathHash) -> anyhow::Result<Option<NarInfo>> {
+        match self.fetch_narinfo(&reqwest::Client::new(), hash).await {
+            Ok(info) => Ok(Some(info)),
+            Err(FetchNarInfoError::Request(error))
+                if error.status() == Some(reqwest::StatusCode::NOT_FOUND) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::HttpBinaryCache;

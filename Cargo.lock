@@ -429,6 +429,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "binary-cache"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "nix-derivation",
+ "nix-narinfo",
+ "reqwest",
+ "serde",
+ "thiserror",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "bitflags"
 version = "2.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1152,15 +1167,7 @@ dependencies = [
 name = "gateway"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "axum",
- "nix-derivation",
- "nix-narinfo",
- "reqwest",
- "serde",
- "thiserror",
- "tokio",
- "url",
+ "binary-cache",
 ]
 
 [[package]]

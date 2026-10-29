@@ -21,29 +21,6 @@ impl fmt::Display for NarInfoPath {
     }
 }
 
-impl NarInfoResponse {
-    pub fn from_upstream(upstream: NarInfo, url: String) -> Result<Self, anyhow::Error> {
-        let info = NarInfo::builder_in(
-            upstream.store_dir().clone(),
-            upstream.store_path().clone(),
-            url,
-            upstream.nar_hash().clone(),
-            upstream.nar_size(),
-        )
-        .compression(upstream.compression().clone())
-        .references(upstream.references().iter().cloned())
-        .deriver(upstream.deriver().cloned())
-        .signatures(upstream.signatures().iter().cloned())
-        .content_address(upstream.content_address().cloned())
-        .file_hash(upstream.file_hash().cloned())
-        .file_size(upstream.file_size())
-        .extensions(upstream.extensions().iter().cloned())
-        .build()?;
-
-        Ok(Self(info))
-    }
-}
-
 impl IntoResponse for NarInfoResponse {
     fn into_response(self) -> Response {
         (
